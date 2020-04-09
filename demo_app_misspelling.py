@@ -1,6 +1,7 @@
 from anex.anex import AnnotationExplorer
 from copy import deepcopy
 import streamlit as st
+from nltk import ngrams
 
 DATASET_PATH = 'tests/epilepsy_tweets.csv'
 ANNOTATION_COL_NAME = 'full_text'
@@ -22,6 +23,10 @@ annot_analyzer_data = load_annot_dataset(DATASET_PATH,
                                          ENCODING)
 annot_analyzer = deepcopy(annot_analyzer_data)
 
+
+def extract_ngrams(data, num):
+    n_grams = ngrams(data.split(" "), num)
+    return [ ' '.join(grams) for grams in n_grams]
 
 '''
 # Annotation Analysis App
@@ -75,9 +80,25 @@ if select_pattern != '':
     st.write(selected_label_df)
     unique_labels_selected = selected_label_df[ANNOTATION_COL_NAME].unique()
     tokens = list(set([token for label in unique_labels_selected
-                       for token in label.split(' ')]))
-    tokens_to_remove = st.multiselect('Filter out label(s) containing these '
+                      for token in label.split(' ')]))
+    tokens.sort()
+
+    single_word_tokens_to_remove = st.multiselect('Filter out label(s) containing these '
                                       'word(s) from results', tokens)
+
+    if st.checkbox("Enable filtering on multi words"):
+        multi_word_tokens = list()
+        for i in range(2, 4):
+            multi_word_tokens += set([token for label in unique_labels_selected
+                                    for token in extract_ngrams(label, i)])
+        multi_word_tokens.sort()
+        multi_words_tokens_to_remove = st.multiselect('Filter out label(s) containing these '
+                                          'word sequence from results', multi_word_tokens)
+    else:
+        multi_words_tokens_to_remove = []
+
+    tokens_to_remove = single_word_tokens_to_remove + multi_words_tokens_to_remove
+
     if tokens_to_remove:
         to_remove_regex = '|'.join(['(\s|^){}(\s|$)'.format(token)
                                     for token in tokens_to_remove])
@@ -86,3 +107,20 @@ if select_pattern != '':
         st.write(filtered_label_df.shape[0], ' label(s) remaining (on ',
                  selected_label_df.shape[0], ')')
         st.write(filtered_label_df)
+
+'''
+## Export
+Export the filtered list as a CSV:
+'''
+input_file_name = DATASET_PATH.split("/")[-1].split(".")[0]
+output_file_name = st.text_input("Output file name", input_file_name + "_filtered.csv")
+
+if st.button("Export as CSV"):
+    if select_pattern != "":
+        if tokens_to_remove:
+            filtered_label_df.to_csv(output_file_name, header=True, index=False)
+        else:
+            selected_label_df.to_csv(output_file_name, header=True, index=False)
+        st.success('Saved !')
+    else:
+        st.error("You should filter on a selection before export")
